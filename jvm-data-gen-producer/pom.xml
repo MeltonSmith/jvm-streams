@@ -42,6 +42,10 @@
             <groupId>com.typesafe</groupId>
             <artifactId>config</artifactId>
         </dependency>
+        <dependency>
+            <groupId>com.github.pureconfig</groupId>
+            <artifactId>pureconfig_${scala.compat.version}</artifactId>
+        </dependency>
     </dependencies>
 
     <build>
