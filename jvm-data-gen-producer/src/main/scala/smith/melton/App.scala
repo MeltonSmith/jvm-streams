@@ -3,6 +3,7 @@ package smith.melton
 import com.typesafe.config.{Config, ConfigFactory}
 import org.apache.kafka.clients.producer.{Callback, KafkaProducer, ProducerRecord, RecordMetadata}
 import org.apache.kafka.common.PartitionInfo
+import org.apache.kafka.common.serialization.{Serde, Serdes}
 
 import java.util
 import org.scalacheck.{Arbitrary, Gen}
@@ -30,14 +31,34 @@ object App extends App {
 
   private val maybeUser: Option[User] = Gen.oneOf(User.users).apply(Gen.Parameters.default, Seed.apply(0))
 
+  Serdes.Long().asInstanceOf[Serde[Long]].serializer()
 
 
 
-
-  private val producer = new KafkaProducer(mapFromSet)
+  private val producer = new KafkaProducer[String, User](mapFromSet)
 
 
   private val infoes: util.List[PartitionInfo] = producer.partitionsFor("test-topic")
+
+  maybeUser.foreach(
+    user => {
+      val value = new ProducerRecord("test-topic", user.id.toString, user)
+      try {
+        producer.send(value)
+      } catch {
+        case e: Exception => {
+           e.printStackTrace()
+        }
+      }
+      finally {
+        producer.close()
+      }
+    }
+  )
+
+
+
+
 
 //  producer.send(null, new Callback {
 //    override def onCompletion(metadata: RecordMetadata, exception: Exception): Unit = {

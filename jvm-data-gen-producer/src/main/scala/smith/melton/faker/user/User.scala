@@ -1,5 +1,6 @@
 package smith.melton.faker.user
 
+import com.fasterxml.jackson.annotation.JsonProperty
 import org.scalacheck.{Arbitrary, Gen}
 import pureconfig.ConfigReader
 import pureconfig.generic.semiauto.deriveReader
@@ -11,7 +12,7 @@ import java.util.UUID
  * @author Melton Smith
  * @since 31.05.2025
  */
-final case class User(id: Long, name: String)
+final case class User(@JsonProperty("Id") id: Long, @JsonProperty("Name") name: String)
 
 object User {
   def users(implicit loader: CustomResourceLoader): Seq[User] =
