@@ -38,6 +38,10 @@
             <groupId>io.github.etspaceman</groupId>
             <artifactId>scalacheck-faker_2.13</artifactId>
         </dependency>
+        <dependency>
+            <groupId>com.typesafe</groupId>
+            <artifactId>config</artifactId>
+        </dependency>
     </dependencies>
 
     <build>

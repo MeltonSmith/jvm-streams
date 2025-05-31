@@ -19,6 +19,8 @@
         <scala.version>2.13.11</scala.version>
         <faker.version>2.0.0</faker.version>
         <scala.compat.version>2.13</scala.compat.version>
+        <typesafeconfig.version>1.4.3</typesafeconfig.version>
+        <pureconfig.version>0.17.9</pureconfig.version>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     </properties>
 
@@ -54,7 +56,20 @@
                 <version>${faker.version}</version>
             </dependency>
 
-<!--            test-->
+            <dependency>
+                <groupId>com.typesafe</groupId>
+                <artifactId>config</artifactId>
+                <version>${typesafeconfig.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.github.pureconfig</groupId>
+                <artifactId>pureconfig_${scala.compat.version}</artifactId>
+                <version>${pureconfig.version}</version>
+            </dependency>
+
+
+
+            <!--            test-->
             <dependency>
                 <groupId>org.apache.kafka</groupId>
                 <artifactId>kafka-streams-test-utils</artifactId>
