@@ -1,6 +1,8 @@
 package smith.melton.serde
 
 import com.fasterxml.jackson.databind.ObjectMapper
+import com.fasterxml.jackson.databind.json.JsonMapper
+import com.fasterxml.jackson.module.scala.DefaultScalaModule
 import org.apache.kafka.common.errors.SerializationException
 import org.apache.kafka.common.serialization.Deserializer
 
@@ -12,12 +14,14 @@ import java.util
  */
 class JsonPojoDeserializer[T] extends Deserializer[T] {
 
-  private val mapper: ObjectMapper = new ObjectMapper()
+  val mapper: JsonMapper = JsonMapper.builder()
+    .addModule(DefaultScalaModule)
+    .build()
 
   private var tClass: Class[T] = _
 
   override def configure(configs: util.Map[String, _], isKey: Boolean): Unit = {
-    tClass = configs.get("JsonPOJOClass").asInstanceOf[Class[T]]
+    tClass = Class.forName(configs.get("entity.pojo.class").asInstanceOf[String]).asInstanceOf[Class[T]]
   }
 
   override def deserialize(topic: String, data: Array[Byte]): T = {

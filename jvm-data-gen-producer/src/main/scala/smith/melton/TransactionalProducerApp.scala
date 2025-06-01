@@ -74,7 +74,7 @@ object TransactionalProducerApp extends App {
         producer.send(new ProducerRecord(producerConfig.getString("topic"), user.id.toString, user),
           (metadata: RecordMetadata, exception: Exception) => {
             if (exception != null)
-              logger.error("Exception in call back", exception.getMessage)
+              logger.error("Exception in call back {}", exception.getMessage)
             else {
               totalMessageProcessed.getAndAdd(1)
               RecordMetadataUtil.prettyPrinter(metadata)
