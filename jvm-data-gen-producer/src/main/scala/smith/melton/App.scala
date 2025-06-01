@@ -5,9 +5,11 @@ import com.fasterxml.jackson.databind.json.JsonMapper
 import com.fasterxml.jackson.module.scala.DefaultScalaModule
 import com.typesafe.config.{Config, ConfigFactory}
 import org.apache.kafka.clients.producer.{KafkaProducer, ProducerRecord, RecordMetadata}
+import org.apache.kafka.common.KafkaException
 import org.apache.kafka.common.utils.{Exit, Utils}
 import org.scalacheck.Gen
 import org.scalacheck.rng.Seed
+import org.slf4j.LoggerFactory
 import smith.melton.faker.CustomResourceLoader.Implicits._
 import smith.melton.faker.user.User
 import smith.melton.util.RecordMetadataUtil
@@ -15,7 +17,7 @@ import smith.melton.util.RecordMetadataUtil
 import java.text.SimpleDateFormat
 import java.util
 import java.util.Date
-import java.util.concurrent.atomic.AtomicLong
+import java.util.concurrent.atomic.{AtomicBoolean, AtomicLong}
 import scala.util.Random
 
 /**
@@ -24,8 +26,9 @@ import scala.util.Random
  */
 object App extends App {
 
-  private val FORMAT = new SimpleDateFormat("yyyy/MM/dd HH:mm:ss:SSS")
+  private val format = new SimpleDateFormat("yyyy/MM/dd HH:mm:ss:SSS")
   private val config: Config = ConfigFactory.load()
+  private val logger = LoggerFactory.getLogger(App.getClass)
 
   private val producerConfig: Config = config.getConfig("producer")
 
@@ -39,22 +42,14 @@ object App extends App {
 
   private val totalMessageProcessed = new AtomicLong(0)
 
-
   private val producer = new KafkaProducer[String, User](mapFromSet)
 
-//  Runtime.getRuntime.addShutdownHook(new Thread(() => {
-//    try {
-//
-////      logger.("Stream stopped")
-//    } catch {
-//      case exc: Exception =>
-////        log.error("Got exception while executing shutdown hook: ", exc)
-//    }
-//
-//  }))
+  val isShuttingDown = new AtomicBoolean(false)
 
   Exit.addShutdownHook("transactional-message-copier-shutdown-hook", () => {
-    System.out.println(statusAsJson("ShutdownComplete", totalMessageProcessed.get, 0 , 0 ,"no tx"))
+    isShuttingDown.set(true)
+    Utils.closeQuietly(producer, "producer")
+    System.out.println(statusAsJson("ShutdownComplete", totalMessageProcessed.get, 0, 0, "no tx"))
   })
 
 
@@ -63,49 +58,35 @@ object App extends App {
     Exit.exit(0)
   } catch {
     case e: Exception =>
+      logger.error("Shutting down after unexpected error in event loop", e)
       System.err.println("Shutting down after unexpected error " + e.getClass.getSimpleName + ": " + e.getMessage + " (see the log for additional detail)")
       Exit.exit(1)
   }
 
   private def runLoop(): Unit = {
-    try{
-      var seed = Seed.apply(0)
-      while (true) {
-        val next = seed.next
-        val user = Gen.oneOf(User.users).apply(Gen.Parameters.default, next).get
-        producer.send(new ProducerRecord(producerConfig.getString("topic"), user.id.toString, user),
-          (metadata: RecordMetadata, exception: Exception) => {
-            totalMessageProcessed.getAndAdd(1)
-            RecordMetadataUtil.prettyPrinter(metadata)
-          })
-        seed = next
-        Thread.sleep(Random.nextLong(10000))
+    var seed = Seed.apply(0)
+    while (!isShuttingDown.get()) {
+      val next = seed.next
+      val user = Gen.oneOf(User.users).apply(Gen.Parameters.default, next).get
+      producer.send(new ProducerRecord(producerConfig.getString("topic"), user.id.toString, user),
+        (metadata: RecordMetadata, exception: Exception) => {
+          totalMessageProcessed.getAndAdd(1)
+          RecordMetadataUtil.prettyPrinter(metadata)
+        })
+      if (Random.nextInt() % 3 == 0) {
+        throw new KafkaException("Manually on random")
       }
-    }
-    finally {
-      println("closing")
-      Utils.closeQuietly(producer, "producer")
+      seed = next
+      Thread.sleep(Random.nextLong(10000))
     }
   }
 
-
-
-
-
-
-
-//  producer.send(null, new Callback {
-//    override def onCompletion(metadata: RecordMetadata, exception: Exception): Unit = {
-//
-//      metadata.
-//    }
-//  })
 
   private def statusAsJson(stage: String, totalProcessed: Long, consumedSinceLastRebalanced: Long, remaining: Long, transactionalId: String) = {
     toJsonString(Map[String, Any](
       "transactionalId" -> transactionalId,
       "stage" -> stage,
-      "time" -> FORMAT.format(new Date()),
+      "time" -> format.format(new Date()),
       "totalProcessed" -> totalProcessed,
     ))
   }
