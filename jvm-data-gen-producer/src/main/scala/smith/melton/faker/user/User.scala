@@ -6,8 +6,6 @@ import pureconfig.ConfigReader
 import pureconfig.generic.semiauto.deriveReader
 import smith.melton.faker.CustomResourceLoader
 
-import java.util.UUID
-
 /**
  * @author Melton Smith
  * @since 31.05.2025

@@ -24,7 +24,6 @@ import scala.util.Random
  */
 object App extends App {
 
-
   private val FORMAT = new SimpleDateFormat("yyyy/MM/dd HH:mm:ss:SSS")
   private val config: Config = ConfigFactory.load()
 
@@ -38,7 +37,7 @@ object App extends App {
     }
   )
 
-  val totalMessageProcessed = new AtomicLong(0)
+  private val totalMessageProcessed = new AtomicLong(0)
 
 
   private val producer = new KafkaProducer[String, User](mapFromSet)
@@ -56,7 +55,6 @@ object App extends App {
 
   Exit.addShutdownHook("transactional-message-copier-shutdown-hook", () => {
     System.out.println(statusAsJson("ShutdownComplete", totalMessageProcessed.get, 0 , 0 ,"no tx"))
-
   })
 
 
