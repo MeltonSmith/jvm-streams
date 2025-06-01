@@ -6,31 +6,31 @@ import com.fasterxml.jackson.module.scala.DefaultScalaModule
 import com.typesafe.config.{Config, ConfigFactory}
 import org.apache.kafka.clients.producer.{KafkaProducer, ProducerRecord, RecordMetadata}
 import org.apache.kafka.common.KafkaException
+import org.apache.kafka.common.errors.ProducerFencedException
 import org.apache.kafka.common.utils.{Exit, Utils}
 import org.scalacheck.Gen
 import org.scalacheck.rng.Seed
 import org.slf4j.LoggerFactory
-import smith.melton.faker.CustomResourceLoader.Implicits._
+import smith.melton.App.{format, logger, mapFromSet, producerConfig}
 import smith.melton.faker.user.User
-import smith.melton.util.RecordMetadataUtil
+import smith.melton.util.{RecordMetadataUtil, Util}
 
 import java.text.SimpleDateFormat
 import java.util
 import java.util.Date
 import java.util.concurrent.atomic.{AtomicBoolean, AtomicLong}
 import scala.util.Random
+import smith.melton.faker.CustomResourceLoader.Implicits._
 
 /**
  * @author Melton Smith
- * @since 31.05.2025
+ * @since 01.06.2025
  */
-object App extends App {
-
-  private val format = new SimpleDateFormat("yyyy/MM/dd HH:mm:ss:SSS")
+object TransactionalProducerApp extends App {
   private val config: Config = ConfigFactory.load()
   private val logger = LoggerFactory.getLogger(App.getClass)
 
-  private val producerConfig: Config = config.getConfig("producer")
+  private val producerConfig: Config = config.getConfig("tx-producer")
 
   private val mapFromSet = new util.HashMap[String, Object]()
 
@@ -49,7 +49,7 @@ object App extends App {
   Exit.addShutdownHook("producer-shutdown-hook", () => {
     isShuttingDown.set(true)
     Utils.closeQuietly(producer, "producer")
-    System.out.println(statusAsJson("ShutdownComplete", totalMessageProcessed.get, 0, 0, "no tx"))
+    System.out.println(Util.statusAsJson("ShutdownComplete", totalMessageProcessed.get, 0, 0, "no tx"))
   })
 
 
@@ -64,51 +64,42 @@ object App extends App {
   }
 
   private def runLoop(): Unit = {
+    producer.initTransactions()
     var seed = Seed.apply(0)
     while (!isShuttingDown.get()) {
-      val next = seed.next
-      val user = Gen.oneOf(User.users).apply(Gen.Parameters.default, next).get
-      producer.send(new ProducerRecord(producerConfig.getString("topic"), user.id.toString, user),
-        (metadata: RecordMetadata, exception: Exception) => {
-          if (exception != null)
-            logger.error("Exception in call back", exception)
-          else {
-            totalMessageProcessed.getAndAdd(1)
-            RecordMetadataUtil.prettyPrinter(metadata)
-          }
-        })
-//      if (Random.nextInt() % 3 == 0) {
-//        throw new KafkaException("Manually on random")
-//      }
-      seed = next
-      Thread.sleep(Random.nextLong(10000))
+      try {
+        val next = seed.next
+        val user = Gen.oneOf(User.users).apply(Gen.Parameters.default, next).get
+        producer.beginTransaction()
+        producer.send(new ProducerRecord(producerConfig.getString("topic"), user.id.toString, user),
+          (metadata: RecordMetadata, exception: Exception) => {
+            if (exception != null)
+              logger.error("Exception in call back", exception.getMessage)
+            else {
+              totalMessageProcessed.getAndAdd(1)
+              RecordMetadataUtil.prettyPrinter(metadata)
+            }
+          })
+//        if (Random.nextInt() % 3 == 0) {
+//          producer.abortTransaction()
+//        } else {
+//          producer.commitTransaction()
+//        }
+        producer.commitTransaction()
+        seed = next
+        Thread.sleep(Random.nextLong(10000))
+      } catch {
+        case e: ProducerFencedException => throw new KafkaException(String.format("The transactional.id %s has been claimed by another process", producerConfig.getString("transactional.id")), e)
+        case e: KafkaException => {
+          logger.debug("Aborting tx after catching an ex")
+          producer.abortTransaction()
+        }
+      }
     }
   }
 
 
-  private def statusAsJson(stage: String, totalProcessed: Long, consumedSinceLastRebalanced: Long, remaining: Long, transactionalId: String) = {
-    toJsonString(Map[String, Any](
-      "transactionalId" -> transactionalId,
-      "stage" -> stage,
-      "time" -> format.format(new Date()),
-      "totalProcessed" -> totalProcessed,
-    ))
-  }
 
-  private def toJsonString(data: Map[String, Any]) = {
-    var json: String = null
-    try {
-      val mapper: JsonMapper = JsonMapper.builder()
-        .addModule(DefaultScalaModule)
-        .build()
-      json = mapper.writeValueAsString(data)
-    } catch {
-      case e: JsonProcessingException =>
-        json = "Bad data can't be written as json: " + e.getMessage
-    }
-    json
-  }
+
 
 }
-
-
