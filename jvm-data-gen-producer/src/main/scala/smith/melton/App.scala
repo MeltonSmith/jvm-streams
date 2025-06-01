@@ -46,7 +46,7 @@ object App extends App {
 
   val isShuttingDown = new AtomicBoolean(false)
 
-  Exit.addShutdownHook("transactional-message-copier-shutdown-hook", () => {
+  Exit.addShutdownHook("producer-shutdown-hook", () => {
     isShuttingDown.set(true)
     Utils.closeQuietly(producer, "producer")
     System.out.println(statusAsJson("ShutdownComplete", totalMessageProcessed.get, 0, 0, "no tx"))
@@ -73,9 +73,9 @@ object App extends App {
           totalMessageProcessed.getAndAdd(1)
           RecordMetadataUtil.prettyPrinter(metadata)
         })
-      if (Random.nextInt() % 3 == 0) {
-        throw new KafkaException("Manually on random")
-      }
+//      if (Random.nextInt() % 3 == 0) {
+//        throw new KafkaException("Manually on random")
+//      }
       seed = next
       Thread.sleep(Random.nextLong(10000))
     }
