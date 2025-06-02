@@ -69,7 +69,7 @@ object TransferProducersApp  extends App {
 
       val tpleGen = for {
         id1 <- userIdGen
-        id2 <- userIdGen suchThat (_ != id1)
+        id2 <- userIdGen retryUntil  (_ != id1)
         amount <- Gen.choose(1, 20000)
       } yield (id1, id2, amount)
 
