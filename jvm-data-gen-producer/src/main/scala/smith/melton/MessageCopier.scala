@@ -79,7 +79,6 @@ object MessageCopier extends App {
         if (records.count() > 0) {
           try {
             producer.beginTransaction()
-
             records.forEach(record => {
               producer.send(consumerRecordToProducerRecord(producerConfig.getString("topic"), record), (metadata: RecordMetadata, exception: Exception) => {
                 if (exception != null)
