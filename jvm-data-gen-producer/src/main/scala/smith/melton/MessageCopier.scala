@@ -1,19 +1,18 @@
 package smith.melton
 
 import com.typesafe.config.{Config, ConfigFactory}
-import org.apache.kafka.clients.consumer.{ConsumerRecord, KafkaConsumer, OffsetAndMetadata}
+import org.apache.kafka.clients.consumer.{ConsumerRebalanceListener, ConsumerRecord, KafkaConsumer, OffsetAndMetadata, OffsetCommitCallback}
 import org.apache.kafka.clients.producer.{KafkaProducer, ProducerRecord, RecordMetadata}
-import org.apache.kafka.common.errors.ProducerFencedException
+import org.apache.kafka.common.errors.{ProducerFencedException, WakeupException}
 import org.apache.kafka.common.utils.{Exit, Utils}
 import org.apache.kafka.common.{KafkaException, TopicPartition}
 import org.slf4j.LoggerFactory
-import smith.melton.TransactionalProducerApp.{logger, totalMessageProcessed}
 import smith.melton.faker.user.User
 import smith.melton.util.RecordMetadataUtil
 
 import java.time.Duration
 import java.util
-import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.{AtomicBoolean, AtomicLong}
 import java.util.{Collections, Map => JMap}
 
 /**
@@ -50,9 +49,12 @@ object MessageCopier extends App {
 
   private val shuttingDown = new AtomicBoolean(false)
 
+  val messagesProcessed = new AtomicLong(0)
+
   Exit.addShutdownHook("consumer shutdown hook", () => {
     shuttingDown.getAndSet(true)
-    Utils.closeQuietly(consumer, "consumer")
+    //TODO (KafkaConsumer is not safe for multi-threaded access. currentThread(name: consumer shutdown hook, id: 33))
+    Utils.closeQuietly(producer, "producer close from shutdown hook thread")
   })
 
 
@@ -69,37 +71,48 @@ object MessageCopier extends App {
 
 
   private def runCopierLoop(): Unit = {
-    consumer.subscribe(consumerConfig.getStringList("topics").asInstanceOf[util.List[String]])
+    consumer.subscribe(consumerConfig.getStringList("topics"))
     producer.initTransactions()
-//    val messagesRemaining = new AtomicLong()
-    while (!shuttingDown.get()) {
-      val records = consumer.poll(Duration.ofMillis(200))
-      if (records.count() > 0){
-        try {
-          producer.beginTransaction()
+    try {
+      while (!shuttingDown.get()) {
+        val records = consumer.poll(Duration.ofMillis(200))
+        if (records.count() > 0) {
+          try {
+            producer.beginTransaction()
 
-          records.forEach(record => {
-            producer.send(consumerRecordToProducerRecord(producerConfig.getString("topic"), record), (metadata: RecordMetadata, exception: Exception) => {
-              if (exception != null)
-                logger.error("Exception in call back {}", exception.getMessage)
-              else {
-                RecordMetadataUtil.prettyPrinter(metadata)
-              }
+            records.forEach(record => {
+              producer.send(consumerRecordToProducerRecord(producerConfig.getString("topic"), record), (metadata: RecordMetadata, exception: Exception) => {
+                if (exception != null)
+                  logger.error("Exception in call back {}", exception.getMessage)
+                else {
+                  RecordMetadataUtil.prettyPrinter(metadata)
+                }
+              })
             })
-          })
-          producer.sendOffsetsToTransaction(defineNewOffsetsForTransaction(consumer), consumer.groupMetadata())
+            producer.sendOffsetsToTransaction(defineNewOffsetsForTransaction(consumer), consumer.groupMetadata())
 
-          producer.commitTransaction()
-        }
-        catch {
-          case e: ProducerFencedException =>
-            throw new KafkaException(String.format("The transactional.id %s has been claimed by another process", producerConfig.getString("transactional.id")), e);
-          case e: KafkaException =>
-            producer.abortTransaction()
-            resetLastCommitedPosition(consumer)
+            producer.commitTransaction()
+          }
+          catch {
+            case e: ProducerFencedException =>
+              throw new KafkaException(String.format("The transactional.id %s has been claimed by another process", producerConfig.getString("transactional.id")), e);
+            case e: KafkaException =>
+              producer.abortTransaction()
+              resetLastCommitedPosition(consumer)
+          }
+
         }
       }
+    } catch {
+      case we: WakeupException =>
+        if(!shuttingDown.get()) //Let the exception propagate if the exception was not raised as part of shutdown
+          throw we
     }
+    finally {
+      Utils.closeQuietly(consumer, "consumer")
+      Utils.closeQuietly(producer, "producer")
+    }
+
   }
 
   def consumerRecordToProducerRecord(topic: String, consumerRecord: ConsumerRecord[String, User]): ProducerRecord[String, User] = {
@@ -118,7 +131,7 @@ object MessageCopier extends App {
     val currentPosition = consumer.position(topicPartition)
     val partitionToLong = consumer.endOffsets(Collections.singleton(topicPartition))
     if (partitionToLong.containsKey(topicPartition)) {
-        return partitionToLong.get(topicPartition) - currentPosition
+      return partitionToLong.get(topicPartition) - currentPosition
     }
     0
   }
