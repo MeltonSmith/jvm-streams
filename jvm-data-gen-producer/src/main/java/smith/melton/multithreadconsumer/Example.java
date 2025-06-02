@@ -8,6 +8,7 @@ import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.common.errors.WakeupException;
 import org.apache.kafka.common.utils.Utils;
 
+import java.io.FileInputStream;
 import java.time.Duration;
 import java.time.temporal.ChronoUnit;
 import java.util.*;
