@@ -3,9 +3,13 @@ package smith.melton.util
 import com.fasterxml.jackson.core.JsonProcessingException
 import com.fasterxml.jackson.databind.json.JsonMapper
 import com.fasterxml.jackson.module.scala.DefaultScalaModule
+import org.apache.kafka.clients.consumer.ConsumerRecords
+import sbt.testing.Task
 
 import java.text.SimpleDateFormat
 import java.util.Date
+import java.util.concurrent.Executors
+import scala.concurrent.{ExecutionContext, Future, Promise}
 
 /**
  * @author Melton Smith

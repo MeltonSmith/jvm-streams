@@ -137,7 +137,7 @@ object MessageCopier extends App {
   }
 
   def resetLastCommitedPosition(kafkaConsumer: KafkaConsumer[String, User]): Unit = {
-    val partitionToMetadata = kafkaConsumer.committed(consumer.assignment())
+    val partitionToMetadata: JMap[TopicPartition, OffsetAndMetadata] = kafkaConsumer.committed(consumer.assignment())
     consumer.assignment().stream.forEach(tp => {
       val metadata = partitionToMetadata.get(tp)
       if (metadata != null) {
