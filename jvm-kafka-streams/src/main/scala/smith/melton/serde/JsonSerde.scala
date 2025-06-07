@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.module.scala.DefaultScalaModule
 import org.apache.kafka.common.serialization.Serde
 import org.apache.kafka.streams.scala.serialization.Serdes
+import smith.melton.agg.BalanceAggregator
 import smith.melton.model.MoneyTransfer
 import smith.melton.serde.JsonSerde.mapper
 
@@ -19,9 +20,14 @@ object JsonSerde {
 
   implicit val moneyTransferSerde: Serde[MoneyTransfer] = Serdes.fromFn[MoneyTransfer](a => MoneyTransferSerde.serialize(a),
     a => MoneyTransferSerde.deserialize(a))
+
+  implicit val balanceAggregatorSerde: Serde[BalanceAggregator] = Serdes.fromFn[BalanceAggregator](a => BalanceAggregator.serialize(a),
+    a => BalanceAggregator.deserialize(a))
 }
 
 private object MoneyTransferSerde extends JsonSerde[MoneyTransfer]
+
+private object BalanceAggregator extends JsonSerde[BalanceAggregator]
 
 class JsonSerde[T >: Null : ClassTag]{
 

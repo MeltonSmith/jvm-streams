@@ -16,7 +16,7 @@ object RecordMetadataUtil {
   def prettyPrinter(recordMetadata: RecordMetadata): Unit = {
     if (recordMetadata != null) {
       val localDateTime = LocalDateTime.ofInstant(Instant.ofEpochMilli(recordMetadata.timestamp()), ZoneId.of("UTC"))
-      System.out.printf("Topic: %s - Partition: %d - Offset: %d, UTC TimeStamp: %s\n", recordMetadata.topic, recordMetadata.partition, recordMetadata.offset, localDateTime.format(formatter))
+      System.out.printf("Topic: %s - Partition: %d - Offset: %d, UTC TimeStamp: %s\n",recordMetadata.topic, recordMetadata.partition, recordMetadata.offset, localDateTime.format(formatter))
 
     }
   }

@@ -8,5 +8,5 @@ import com.fasterxml.jackson.annotation.JsonProperty
  */
 final case class MoneyTransfer(@JsonProperty("fromUserId") fromUserId: Long,
                                @JsonProperty("toUserId") toUserId: Long,
-                               @JsonProperty("amount") long: Long
+                               @JsonProperty("amount") amount: Long
                               )
