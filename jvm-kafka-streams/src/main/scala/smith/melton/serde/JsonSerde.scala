@@ -36,17 +36,10 @@ class JsonSerde[T >: Null : ClassTag]{
   }
 
   def deserialize(data: Array[Byte]): Option[T] = {
-    Option(mapper.readValue(data, classTag[T].runtimeClass.asInstanceOf[Class[T]]))
-//    case null => null
-//    case _ =>
-//      try {
-//
-//      } catch {
-//        case e: Exception =>
-//          val jsonStr = new String(data, "UTF-8")
-//          //            logger.warn(s"Failed parsing ${jsonStr}", e)
-//          null
-//      }
+    data match {
+      case null => Option.empty
+      case value =>  Option(mapper.readValue(value, classTag[T].runtimeClass.asInstanceOf[Class[T]]))
+    }
   }
 
 }

@@ -13,6 +13,7 @@ import org.apache.kafka.streams.scala.serialization.Serdes._
 import org.apache.kafka.streams.state.internals.RocksDBStore
 import org.apache.kafka.streams.state.{KeyValueBytesStoreSupplier, Stores}
 import org.apache.kafka.streams.{AutoOffsetReset, KafkaStreams, StreamsConfig}
+import smith.melton
 import smith.melton.agg.BalanceAggregator
 import smith.melton.model.MoneyTransfer
 import smith.melton.serde.JsonSerde._
@@ -57,28 +58,31 @@ object StreamsApp extends App {
   implicit val b: KeyValueBytesStoreSupplier = (Stores.inMemoryKeyValueStore("in mem"))
 
   private val function: (Long, MoneyTransfer, BalanceAggregator) => BalanceAggregator = (_: Long, v: MoneyTransfer, agg: BalanceAggregator) => {
-    agg.add(v.amount)
-    agg
+   println(s"adder ${agg.currentSum} plus ${v.amount} = ${agg.currentSum + v.amount}")
+    new BalanceAggregator(agg.currentSum + v.amount)
   }
   private val function1: (Long, MoneyTransfer, BalanceAggregator) => BalanceAggregator = (_: Long, v: MoneyTransfer, agg: BalanceAggregator) => {
-    agg.substract(v.amount)
+//    println(s"subscractor ${agg.currentSum} minus ${v.amount}")
+//    new BalanceAggregator(agg.currentSum - v.amount)
     agg
   }
-  private val aggregator: BalanceAggregator = new BalanceAggregator()
+  private val aggregator: BalanceAggregator = new BalanceAggregator(0)
 
 
   private val value = builder.table("transfers_topic")(Consumed.`with`[String, MoneyTransfer]
       .withOffsetResetPolicy(AutoOffsetReset.latest()))
-    .groupBy[Long, Long]((_, v) => (v.fromUserId, v.amount))(Grouped.`with`[Long, Long])
-    .aggregate(0L)((k,v,c) => c + v, (k,v,c) => c - v)(Materialized.as[Long, Long, ByteArrayKeyValueStore]("newVer"))
-//    .aggregate(aggregator)(function, function1)(Materialized.`with`[Long, BalanceAggregator, ByteArrayKeyValueStore](longSerde, balanceAggregatorSerde))
-.toStream
-//    .peek((k: Long, v: Long) => {
-//          println(s"key $k, value $v")
-//          println(s"================")
-//        })
-      .map((k,v) => (k.toString, v.toString))
-      .to("output-balance-per-user")(Produced.`with`[String, String])
+    .groupBy[Long, MoneyTransfer]((_, v) => (v.toUserId, v))(Grouped.`with`[Long, MoneyTransfer](longSerde, moneyTransferSerde))
+//    .aggregate(0L)((k,v,c) => c + v, (k,v,c) => c - v)(Materialized.as[Long, Long, ByteArrayKeyValueStore]("newVer"))
+    .aggregate(aggregator)(function, function1)(Materialized.`with`[Long, BalanceAggregator, ByteArrayKeyValueStore](longSerde, balanceAggregatorSerde))
+//    .suppress(untilTimeLimit(ofMinutes(1), maxBytes(1_000_000L).emitEarlyWhenFull()))
+    .toStream
+
+    .peek((k: Long, v: BalanceAggregator) => {
+          println(s"key $k, value ${v.currentSum}")
+          println(s"================")
+        })
+//      .map((k,v) => (k.toString, v))
+//      .to("output-balance-per-user")(Produced.`with`[String, BalanceAggregator])
 
 
   private val topology = builder.build()
