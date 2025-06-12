@@ -3,7 +3,7 @@ package smith.melton
 import com.typesafe.config.{Config, ConfigFactory}
 import org.apache.kafka.clients.consumer.{ConsumerRebalanceListener, ConsumerRecord, KafkaConsumer, OffsetAndMetadata, OffsetCommitCallback}
 import org.apache.kafka.clients.producer.{KafkaProducer, ProducerRecord, RecordMetadata}
-import org.apache.kafka.common.errors.{ProducerFencedException, WakeupException}
+import org.apache.kafka.common.errors.{OutOfOrderSequenceException, ProducerFencedException, WakeupException}
 import org.apache.kafka.common.utils.{Exit, Utils}
 import org.apache.kafka.common.{KafkaException, TopicPartition}
 import org.slf4j.LoggerFactory
@@ -53,7 +53,7 @@ object MessageCopier extends App {
 
   Exit.addShutdownHook("consumer shutdown hook", () => {
     shuttingDown.getAndSet(true)
-    //TODO (KafkaConsumer is not safe for multi-threaded access. currentThread(name: consumer shutdown hook, id: 33))
+    consumer.wakeup()
     Utils.closeQuietly(producer, "producer close from shutdown hook thread")
   })
 
@@ -93,7 +93,8 @@ object MessageCopier extends App {
             producer.commitTransaction()
           }
           catch {
-            case e: ProducerFencedException =>
+            case e: ProducerFencedException | OutOfOrderSequenceException =>
+              Thread.currentThread().interrupt()
               throw new KafkaException(String.format("The transactional.id %s has been claimed by another process", producerConfig.getString("transactional.id")), e);
             case e: KafkaException =>
               producer.abortTransaction()

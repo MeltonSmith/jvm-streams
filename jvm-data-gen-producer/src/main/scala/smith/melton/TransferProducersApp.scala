@@ -2,6 +2,7 @@ package smith.melton
 
 import com.typesafe.config.{Config, ConfigFactory}
 import org.apache.kafka.clients.producer.{KafkaProducer, ProducerRecord, RecordMetadata}
+import org.apache.kafka.common.errors.OutOfOrderSequenceException
 import org.apache.kafka.common.utils.{Exit, Utils}
 import org.scalacheck.Gen
 import org.scalacheck.rng.Seed
@@ -13,7 +14,7 @@ import smith.melton.faker.CustomResourceLoader.Implicits._
 import smith.melton.model.MoneyTransfer
 
 import java.text.SimpleDateFormat
-import java.util
+import java.{lang, util}
 import java.util.UUID
 import java.util.concurrent.atomic.{AtomicBoolean, AtomicLong}
 import scala.util.Random
@@ -22,7 +23,7 @@ import scala.util.Random
  * @author Melton Smith
  * @since 02.06.2025
  */
-object TransferProducersApp  extends App {
+object TransferProducersApp extends App {
   private val format = new SimpleDateFormat("yyyy/MM/dd HH:mm:ss:SSS")
   private val config: Config = ConfigFactory.load()
   private val logger = LoggerFactory.getLogger(App.getClass)
@@ -69,7 +70,7 @@ object TransferProducersApp  extends App {
 
       val tpleGen = for {
         id1 <- userIdGen
-        id2 <- userIdGen retryUntil  (_ != id1)
+        id2 <- userIdGen retryUntil (_ != id1)
         amount <- Gen.choose(1, 20000)
       } yield (id1, id2, amount)
 
