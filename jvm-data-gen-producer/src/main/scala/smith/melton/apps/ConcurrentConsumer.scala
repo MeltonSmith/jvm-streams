@@ -2,15 +2,15 @@ package smith.melton.apps
 
 import com.typesafe.config.{Config, ConfigFactory}
 import org.apache.kafka.clients.consumer.{ConsumerRecords, KafkaConsumer}
-import org.apache.kafka.common.utils.Exit
-import smith.melton.MessageCopier.{consumer, consumerConfig}
+import org.apache.kafka.common.errors.WakeupException
+import org.apache.kafka.common.utils.{Exit, Utils}
+import org.slf4j.LoggerFactory
 import smith.melton.concur.ConcurConsumerUserProcessor
 import smith.melton.faker.user.User
 
 import java.time.Duration
 import java.util
-import java.util.concurrent.{ExecutorService, Executors}
-import scala.concurrent.{ExecutionContext, ExecutionContextExecutorService}
+import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * @author Melton Smith
@@ -18,12 +18,15 @@ import scala.concurrent.{ExecutionContext, ExecutionContextExecutorService}
  */
 object ConcurrentConsumer {
 
+  private val logger = LoggerFactory.getLogger(classOf[ConcurConsumerUserProcessor])
+
   private val config: Config = ConfigFactory.load("concurrentconsumer.conf")
 
   private val consumerConfigMap = new util.HashMap[String, Object]()
 
   private val concurrentConsumerUserProcessor = new ConcurConsumerUserProcessor(config.getConfig("concurrentConsumerUserProcessor"))
 
+  private val shuttingDown = new AtomicBoolean(false)
 
   config.getConfig("consumer").entrySet().forEach(
     a => {
@@ -35,6 +38,12 @@ object ConcurrentConsumer {
   private val consumer = new KafkaConsumer[String, User](consumerConfigMap)
   consumer.subscribe(config.getConfig("consumer").getStringList("topics"))
 
+
+  Exit.addShutdownHook("consumer shutdown hook", () => {
+    shuttingDown.getAndSet(true)
+    consumer.wakeup()
+  })
+
   try {
     concurrentConsumerUserProcessor.start()
     runLoop()
@@ -43,26 +52,39 @@ object ConcurrentConsumer {
   }
   catch {
     case e: Exception => {
-
+      logger.error("Shutting down after unexpected error in event loop", e)
+      System.err.println("Shutting down after unexpected error " + e.getClass.getSimpleName + ": " + e.getMessage + " (see the log for additional detail)")
+      Exit.exit(1)
     }
   }
 
-
-  def runLoop(): Unit = {
+  private def runLoop(): Unit = {
+    concurrentConsumerUserProcessor.start()
+    concurrentConsumerUserProcessor.close()
     try {
-      val value: ConsumerRecords[String, User] = consumer.poll(Duration.ofMillis(200))
-      //TODO avoid at most once by waiting offsets per partition
-      concurrentConsumerUserProcessor.processRecords(value)
+      while (!shuttingDown.get()) {
+        val value: ConsumerRecords[String, User] = consumer.poll(Duration.ofMillis(200))
+        //TODO avoid at most once by waiting offsets per partition
+        concurrentConsumerUserProcessor.processRecords(value)
+        consumer.pause(concurrentConsumerUserProcessor.processingTasks.keySet())
 
-      consumer.pause(concurrentConsumerUserProcessor.processingTasks)
-      consumer
+        val partitionToMetadata = concurrentConsumerUserProcessor.getOffsets()
 
-
+        consumer.commitSync(partitionToMetadata)
+        consumer.resume(partitionToMetadata.keySet())
+      }
+    } catch {
+      case e: WakeupException => {
+        if (!shuttingDown.get())
+          throw e;
+      }
+    }
+    finally {
+      Utils.closeQuietly(consumer, "Consumer closing")
     }
 
-  }
 
-  def committedOffsets()
+  }
 
 
 }

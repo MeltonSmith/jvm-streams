@@ -6,8 +6,11 @@ import org.apache.kafka.common.TopicPartition
 import org.slf4j.LoggerFactory
 import smith.melton.faker.user.User
 
+import java.util.{HashMap => JHashMap}
+import java.util.{Map => JMap}
 import java.util.concurrent.atomic.AtomicBoolean
-import java.util.concurrent.{ArrayBlockingQueue, ConcurrentLinkedDeque, Executors}
+import java.util.concurrent.{ArrayBlockingQueue, ConcurrentHashMap, ConcurrentLinkedDeque, Executors}
+import scala.collection.mutable
 import scala.collection.mutable.ListBuffer
 import scala.concurrent.duration.{MILLISECONDS, SECONDS}
 import scala.concurrent.{ExecutionContext, ExecutionContextExecutorService, Future}
@@ -18,23 +21,22 @@ import scala.util.{Failure, Random, Success}
  * @author Melton Smith
  * @since 12.06.2025
  */
-class ConcurConsumerUserProcessor(config: Config) extends ConcurProcessor[String, User]{
+class ConcurConsumerUserProcessor(config: Config) extends ConcurProcessor[String, User] {
 
   private val logger = LoggerFactory.getLogger(classOf[ConcurConsumerUserProcessor])
   private val processing = new AtomicBoolean(false)
 
   override val productQueue = new ArrayBlockingQueue[ConsumerRecords[String, User]](config.getInt("TODO"))
-  override val offsetQueue = new ConcurrentLinkedDeque[Map[TopicPartition, OffsetAndMetadata]]()
+  override val offsetQueue = new ConcurrentLinkedDeque[JMap[TopicPartition, OffsetAndMetadata]]()
 
   private implicit val workerPool: ExecutionContextExecutorService = ExecutionContext.fromExecutorService(Executors.newCachedThreadPool())
   private val loopExecutor: ExecutionContextExecutorService = ExecutionContext.fromExecutorService(Executors.newSingleThreadExecutor())
 
-  val processingTasks = new scala.collection.mutable.HashMap[TopicPartition, Future[Long]]
-  val offsetsToCommit = new scala.collection.mutable.HashMap[TopicPartition, OffsetAndMetadata]
+  val processingTasks = new ConcurrentHashMap[TopicPartition, Future[Long]]
 
   override def start(): Unit = {
     processing.set(true)
-    Future(process())
+    Future(process())(loopExecutor)
   }
 
   override def processRecords(records: ConsumerRecords[String, User]): Unit = {
@@ -42,58 +44,66 @@ class ConcurConsumerUserProcessor(config: Config) extends ConcurProcessor[String
       logger.debug("Putting records into the process queue {}", records)
       productQueue.offer(records, 20, SECONDS)
     } catch {
-      case e: InterruptedException => {
+      case _: InterruptedException => {
         Thread.currentThread().interrupt()
       }
     }
   }
 
-  override def getOffsets(): Map[TopicPartition, OffsetAndMetadata] = {
-    offsetsToCommit.toMap
+  /**
+   * Get the "ready" offsets to be commited per partition
+   * @return
+   */
+  override def getOffsets(): JMap[TopicPartition, OffsetAndMetadata] = {
+    offsetQueue.poll()
   }
 
-  def process(): Unit = {
+  private def process(): Unit = {
     while (processing.get()) {
       try {
         val records = productQueue.poll()
         if (records != null) {
           records.partitions().forEach(partition => {
-             records.records(partition).asScala.map(record => {
+            records.records(partition).asScala.map(record => {
               processingTasks.put(partition, Future(processTask(record)))
             })
 
           })
+        } else {
+          logger.info("No new records in the product queue")
         }
         checkActiveTasks()
       } catch {
-        case
+        case _: InterruptedException => {
+          processing.set(false)
+          Thread.currentThread().interrupt()
+        }
       }
     }
   }
 
   private def checkActiveTasks(): Unit = {
     val tpWithFinishedTasks = new ListBuffer[TopicPartition]
-    processingTasks.foreach((tp: TopicPartition, consumerTask: Future[Long]) => {
-      if (consumerTask.isCompleted) {
-        tpWithFinishedTasks.addOne(tp)
-        consumerTask.value match {
+    val partitionToMetadata = new JHashMap[TopicPartition, OffsetAndMetadata]()
+    processingTasks.forEach((k, v) => {
+      if (v.isCompleted) {
+        v.value match {
           case Some(value) => {
             value match {
               case Success(offset) => {
-                offsetsToCommit.put(tp, new OffsetAndMetadata(offset))
+                partitionToMetadata.put(k, new OffsetAndMetadata(offset))
               }
               case Failure(exception) => {
-                  logger.error("Error while processing record {}", )
+                logger.error("Error while processing record, ex {}", exception)
               }
             }
           }
-          //cant be
-          case None => _
         }
       }
-
     })
     tpWithFinishedTasks.foreach(processingTasks.remove)
+    logger.debug("Putting offsets into the queue")
+    offsetQueue.offer(partitionToMetadata)
   }
 
   private def processTask(consumerRecord: ConsumerRecord[String, User]): Long = {
@@ -110,8 +120,12 @@ class ConcurConsumerUserProcessor(config: Config) extends ConcurProcessor[String
   }
 
   override def close(): Unit = {
-    logger.info("Received signal to close");
+    logger.info("Received signal to close for processor")
     processing.set(false)
+    loopExecutor.awaitTermination(5000, MILLISECONDS)
+    loopExecutor.shutdown()
+
+    logger.debug("Shutting down inner caching working pool")
     workerPool.awaitTermination(5000, MILLISECONDS)
     workerPool.shutdown()
   }

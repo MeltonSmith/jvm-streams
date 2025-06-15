@@ -2,6 +2,7 @@ package smith.melton.concur
 
 import org.apache.kafka.clients.consumer.{ConsumerRecords, OffsetAndMetadata}
 import org.apache.kafka.common.TopicPartition
+import java.util.{Map=>JMap}
 
 import java.util.concurrent.{ArrayBlockingQueue, ConcurrentLinkedDeque}
 
@@ -11,11 +12,11 @@ import java.util.concurrent.{ArrayBlockingQueue, ConcurrentLinkedDeque}
  */
 trait ConcurProcessor[K,V] {
   val productQueue: ArrayBlockingQueue[ConsumerRecords[K, V]]
-  val offsetQueue: ConcurrentLinkedDeque[Map[TopicPartition, OffsetAndMetadata]]
+  val offsetQueue: ConcurrentLinkedDeque[JMap[TopicPartition, OffsetAndMetadata]]
 
 
   def start(): Unit
   def processRecords(records: ConsumerRecords[K, V]) : Unit
-  def getOffsets(): Map[TopicPartition, OffsetAndMetadata]
+  def getOffsets(): JMap[TopicPartition, OffsetAndMetadata]
   def close(): Unit
 }
