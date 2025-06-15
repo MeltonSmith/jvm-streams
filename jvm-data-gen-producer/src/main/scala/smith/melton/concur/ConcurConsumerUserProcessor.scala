@@ -6,11 +6,9 @@ import org.apache.kafka.common.TopicPartition
 import org.slf4j.LoggerFactory
 import smith.melton.faker.user.User
 
-import java.util.{HashMap => JHashMap}
-import java.util.{Map => JMap}
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.{ArrayBlockingQueue, ConcurrentHashMap, ConcurrentLinkedDeque, Executors}
-import scala.collection.mutable
+import java.util.{HashMap => JHashMap, Map => JMap}
 import scala.collection.mutable.ListBuffer
 import scala.concurrent.duration.{MILLISECONDS, SECONDS}
 import scala.concurrent.{ExecutionContext, ExecutionContextExecutorService, Future}
@@ -18,6 +16,10 @@ import scala.jdk.CollectionConverters._
 import scala.util.{Failure, Random, Success}
 
 /**
+ *
+ * A custom concurrent process which utilizes two pools, one single thread pool for inner pool
+ * The second one is a worker pool, which takes the main load of processing the records
+ *
  * @author Melton Smith
  * @since 12.06.2025
  */
@@ -52,6 +54,7 @@ class ConcurConsumerUserProcessor(config: Config) extends ConcurProcessor[String
 
   /**
    * Get the "ready" offsets to be commited per partition
+   *
    * @return
    */
   override def getOffsets(): JMap[TopicPartition, OffsetAndMetadata] = {
@@ -91,7 +94,8 @@ class ConcurConsumerUserProcessor(config: Config) extends ConcurProcessor[String
           case Some(value) => {
             value match {
               case Success(offset) => {
-                partitionToMetadata.put(k, new OffsetAndMetadata(offset))
+                partitionToMetadata.put(k, new OffsetAndMetadata(offset + 1))
+                tpWithFinishedTasks.addOne(k)
               }
               case Failure(exception) => {
                 logger.error("Error while processing record, ex {}", exception)
@@ -101,19 +105,25 @@ class ConcurConsumerUserProcessor(config: Config) extends ConcurProcessor[String
         }
       }
     })
-    tpWithFinishedTasks.foreach(processingTasks.remove)
+    tpWithFinishedTasks.foreach(k => processingTasks.remove(k))
     logger.debug("Putting offsets into the queue")
-    offsetQueue.offer(partitionToMetadata)
+    if (!partitionToMetadata.isEmpty)
+      offsetQueue.offer(partitionToMetadata)
   }
 
   private def processTask(consumerRecord: ConsumerRecord[String, User]): Long = {
     val user = consumerRecord.value
-    logger.info("Processed a record with key {}, user id {}, user name {}, in thread", consumerRecord.key, user.id, user.name, Thread.currentThread().getName)
+    logger.info("Processed a record with key {}, user id {}, user name {}, offset {}, in thread {}",
+      consumerRecord.key,
+      user.id,
+      user.name,
+      consumerRecord.offset(),
+      Thread.currentThread().getName)
     try
       //Simulate a long time to process each record
       Thread.sleep(Random.nextLong(10000))
     catch {
-      case e: InterruptedException => {
+      case _: InterruptedException => {
         logger.info("interrupted in process task")
         Thread.currentThread.interrupt()
       }
@@ -128,7 +138,7 @@ class ConcurConsumerUserProcessor(config: Config) extends ConcurProcessor[String
     loopExecutor.awaitTermination(5000, MILLISECONDS)
     loopExecutor.shutdown()
 
-    logger.debug("Shutting down inner caching working pool")
+    logger.info("Shutting down inner caching working pool")
     workerPool.awaitTermination(5000, MILLISECONDS)
     workerPool.shutdown()
   }
