@@ -26,7 +26,7 @@ class ConcurConsumerUserProcessor(config: Config) extends ConcurProcessor[String
   private val logger = LoggerFactory.getLogger(classOf[ConcurConsumerUserProcessor])
   private val processing = new AtomicBoolean(false)
 
-  override val productQueue = new ArrayBlockingQueue[ConsumerRecords[String, User]](config.getInt("TODO"))
+  override val productQueue = new ArrayBlockingQueue[ConsumerRecords[String, User]](config.getInt("product-queue-size"))
   override val offsetQueue = new ConcurrentLinkedDeque[JMap[TopicPartition, OffsetAndMetadata]]()
 
   private implicit val workerPool: ExecutionContextExecutorService = ExecutionContext.fromExecutorService(Executors.newCachedThreadPool())
@@ -70,7 +70,7 @@ class ConcurConsumerUserProcessor(config: Config) extends ConcurProcessor[String
 
           })
         } else {
-          logger.info("No new records in the product queue")
+          logger.debug("No new records in the product queue")
         }
         checkActiveTasks()
       } catch {
@@ -108,13 +108,16 @@ class ConcurConsumerUserProcessor(config: Config) extends ConcurProcessor[String
 
   private def processTask(consumerRecord: ConsumerRecord[String, User]): Long = {
     val user = consumerRecord.value
-    logger.info("Processed a record with {}, user id {}, user name {}", consumerRecord.key, user.id, user.name)
+    logger.info("Processed a record with key {}, user id {}, user name {}, in thread", consumerRecord.key, user.id, user.name, Thread.currentThread().getName)
     try
       //Simulate a long time to process each record
-      Thread.sleep(Random.nextLong(2000))
+      Thread.sleep(Random.nextLong(10000))
     catch {
-      case e: InterruptedException =>
+      case e: InterruptedException => {
+        logger.info("interrupted in process task")
         Thread.currentThread.interrupt()
+      }
+
     }
     consumerRecord.offset()
   }

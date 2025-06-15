@@ -93,8 +93,7 @@ object MessageCopier extends App {
             producer.commitTransaction()
           }
           catch {
-            case e: ProducerFencedException | OutOfOrderSequenceException =>
-              Thread.currentThread().interrupt()
+            case e: ProducerFencedException =>
               throw new KafkaException(String.format("The transactional.id %s has been claimed by another process", producerConfig.getString("transactional.id")), e);
             case e: KafkaException =>
               producer.abortTransaction()

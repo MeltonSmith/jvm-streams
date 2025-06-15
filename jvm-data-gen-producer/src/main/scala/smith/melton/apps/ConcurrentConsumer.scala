@@ -16,7 +16,7 @@ import java.util.concurrent.atomic.AtomicBoolean
  * @author Melton Smith
  * @since 12.06.2025
  */
-object ConcurrentConsumer {
+object ConcurrentConsumer  extends App{
 
   private val logger = LoggerFactory.getLogger(classOf[ConcurConsumerUserProcessor])
 
@@ -27,6 +27,8 @@ object ConcurrentConsumer {
   private val concurrentConsumerUserProcessor = new ConcurConsumerUserProcessor(config.getConfig("concurrentConsumerUserProcessor"))
 
   private val shuttingDown = new AtomicBoolean(false)
+
+  private var lastCommitedMills = 0L
 
   config.getConfig("consumer").entrySet().forEach(
     a => {
@@ -42,12 +44,12 @@ object ConcurrentConsumer {
   Exit.addShutdownHook("consumer shutdown hook", () => {
     shuttingDown.getAndSet(true)
     consumer.wakeup()
+    concurrentConsumerUserProcessor.close()
   })
 
   try {
     concurrentConsumerUserProcessor.start()
     runLoop()
-    concurrentConsumerUserProcessor.close()
     Exit.exit(0)
   }
   catch {
@@ -59,24 +61,41 @@ object ConcurrentConsumer {
   }
 
   private def runLoop(): Unit = {
-    concurrentConsumerUserProcessor.start()
-    concurrentConsumerUserProcessor.close()
+
     try {
       while (!shuttingDown.get()) {
         val value: ConsumerRecords[String, User] = consumer.poll(Duration.ofMillis(200))
         //TODO avoid at most once by waiting offsets per partition
         concurrentConsumerUserProcessor.processRecords(value)
-        consumer.pause(concurrentConsumerUserProcessor.processingTasks.keySet())
+        val value1 = concurrentConsumerUserProcessor.processingTasks.keySet()
+        consumer.pause(value1)
+        logger.info("pause with {}", value1)
 
         val partitionToMetadata = concurrentConsumerUserProcessor.getOffsets()
+        if (partitionToMetadata != null) {
 
-        consumer.commitSync(partitionToMetadata)
-        consumer.resume(partitionToMetadata.keySet())
+          val interval = 500L
+          try {
+            val l = System.currentTimeMillis
+            if (l - lastCommitedMills > interval) {
+                 logger.info("Commiting offsets {}", partitionToMetadata)
+                consumer.commitSync(partitionToMetadata)
+              lastCommitedMills = l
+            }
+          } catch {
+            case wu: Exception =>
+              System.out.println("Failed to commit offsets")
+          }
+          val partitions = partitionToMetadata.keySet()
+          logger.info("resuming with {}", partitions)
+          consumer.resume(partitions)
+        }
+
       }
     } catch {
       case e: WakeupException => {
         if (!shuttingDown.get())
-          throw e;
+          throw e
       }
     }
     finally {
