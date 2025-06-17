@@ -11,12 +11,14 @@
     <modules>
         <module>jvm-data-gen-producer</module>
         <module>jvm-kafka-streams</module>
+        <module>jvm-spark-streaming</module>
     </modules>
 
     <properties>
         <maven.compiler.source>21</maven.compiler.source>
         <maven.compiler.target>21</maven.compiler.target>
         <kafka.version>4.0.0</kafka.version>
+        <spark.version>4.0.0</spark.version>
         <scala.version>2.13.11</scala.version>
         <jackson.version>2.19.0</jackson.version>
         <faker.version>2.0.0</faker.version>
@@ -59,6 +61,28 @@
                 <groupId>org.apache.kafka</groupId>
                 <artifactId>kafka-streams-scala_2.13</artifactId>
                 <version>${kafka.version}</version>
+            </dependency>
+
+<!--            spark-->
+            <dependency>
+                <groupId>org.apache.spark</groupId>
+                <artifactId>spark-core_2.13</artifactId>
+                <version>${spark.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.spark</groupId>
+                <artifactId>spark-sql_2.13</artifactId>
+                <version>${spark.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.spark</groupId>
+                <artifactId>spark-streaming_2.13</artifactId>
+                <version>${spark.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.spark</groupId>
+                <artifactId>spark-sql-kafka-0-10_2.13</artifactId>
+                <version>${spark.version}</version>
             </dependency>
 
 <!--            faker-->

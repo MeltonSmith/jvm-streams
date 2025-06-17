@@ -9,7 +9,7 @@
         <version>1.0.0</version>
     </parent>
 
-    <artifactId>jvm-kafka-streams</artifactId>
+    <artifactId>jvm-spark-streaming</artifactId>
 
     <properties>
         <maven.compiler.source>21</maven.compiler.source>
@@ -27,18 +27,25 @@
             <artifactId>scala-reflect</artifactId>
         </dependency>
         <dependency>
+            <groupId>org.apache.spark</groupId>
+            <artifactId>spark-core_2.13</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.spark</groupId>
+            <artifactId>spark-sql_2.13</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.spark</groupId>
+            <artifactId>spark-streaming_2.13</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.spark</groupId>
+            <artifactId>spark-sql-kafka-0-10_2.13</artifactId>
+        </dependency>
+        <dependency>
             <groupId>org.apache.kafka</groupId>
             <artifactId>kafka-clients</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>org.apache.kafka</groupId>
-            <artifactId>kafka-streams-scala_2.13</artifactId>
-        </dependency>
-
-
-        <dependency>
-            <groupId>io.github.etspaceman</groupId>
-            <artifactId>scalacheck-faker_2.13</artifactId>
+            <version>3.9.0</version>
         </dependency>
         <dependency>
             <groupId>com.typesafe</groupId>
@@ -47,20 +54,6 @@
         <dependency>
             <groupId>com.github.pureconfig</groupId>
             <artifactId>pureconfig_${scala.compat.version}</artifactId>
-        </dependency>
-
-        <dependency>
-            <groupId>com.fasterxml.jackson.core</groupId>
-            <artifactId>jackson-databind</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>com.fasterxml.jackson.module</groupId>
-            <artifactId>jackson-module-scala_2.13</artifactId>
-        </dependency>
-
-        <dependency>
-            <groupId>org.slf4j</groupId>
-            <artifactId>slf4j-reload4j</artifactId>
         </dependency>
     </dependencies>
 

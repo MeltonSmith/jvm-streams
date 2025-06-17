@@ -93,7 +93,7 @@ object TransferProducersApp extends App {
           }
         })
       seed = next
-      Thread.sleep(Random.nextLong(10000))
+      Thread.sleep(Random.nextLong(100))
     }
   }
 
