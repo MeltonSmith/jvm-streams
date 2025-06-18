@@ -2,7 +2,10 @@ package smith.melton
 
 import com.typesafe.config.{Config, ConfigFactory}
 import org.apache.spark.sql.SparkSession
+import org.apache.spark.sql.streaming.Trigger
 
+import java.util.concurrent.TimeUnit
+import scala.concurrent.duration.{Duration, MILLISECONDS}
 import scala.jdk.CollectionConverters._
 
 /**
@@ -31,7 +34,9 @@ object StreamingUserTxApp extends App {
 
   sparkSession.sparkContext.setLogLevel("ERROR")
 
-  val userTxStreamingQueryConfig = sparkStreamingApp.getConfig("usertxstreamingquery")
+  sparkSession.streams.addListener()
+
+  val userTxStreamingQueryConfig = sparkStreamingApp.getConfig("usertxstreamingqueryinput")
     .entrySet()
     .asScala
     .map(e => e.getKey -> e.getValue.unwrapped().toString)
@@ -47,13 +52,12 @@ object StreamingUserTxApp extends App {
 
 
   val transfersQuery =  transfers.writeStream
-//    .foreach()
     .format("console")
+    .trigger(Trigger.ProcessingTime(Duration(20, TimeUnit.SECONDS)))
     .outputMode("append")
     .queryName("transfers")
     .start()
 
 
-  transfersQuery.stop()
   transfersQuery.awaitTermination()
 }
