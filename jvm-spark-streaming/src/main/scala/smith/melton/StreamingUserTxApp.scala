@@ -3,6 +3,7 @@ package smith.melton
 import com.typesafe.config.{Config, ConfigFactory}
 import org.apache.spark.sql.SparkSession
 import org.apache.spark.sql.streaming.Trigger
+import smith.melton.streaming.listener.GracefulStopListener
 
 import java.util.concurrent.TimeUnit
 import scala.concurrent.duration.{Duration, MILLISECONDS}
@@ -34,7 +35,8 @@ object StreamingUserTxApp extends App {
 
   sparkSession.sparkContext.setLogLevel("ERROR")
 
-  sparkSession.streams.addListener()
+
+  sparkSession.streams.addListener(new GracefulStopListener(sparkSession.streams))
 
   val userTxStreamingQueryConfig = sparkStreamingApp.getConfig("usertxstreamingqueryinput")
     .entrySet()
