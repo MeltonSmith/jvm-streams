@@ -33,7 +33,7 @@ object StreamingUserTxApp extends App {
     .config(sparkConfigMap)
     .create()
 
-  sparkSession.sparkContext.setLogLevel("ERROR")
+  sparkSession.sparkContext.setLogLevel("INFO") //TODO log4j2 conf
 
 
   sparkSession.streams.addListener(new GracefulStopListener(sparkSession.streams))
